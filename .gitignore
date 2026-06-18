@@ -1,0 +1,15 @@
+/bin/
+/target/
+go.sum
+Cargo.lock
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store

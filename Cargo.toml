@@ -1,0 +1,3 @@
+[workspace]
+members = ["cmd/k8sync"]
+resolver = "2"
