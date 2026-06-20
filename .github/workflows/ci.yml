@@ -47,8 +47,11 @@ jobs:
     - name: Run Clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
 
-    - name: Run Go tests
-      run: go test -v -race -coverprofile=coverage-go.txt ./...
+    - name: Run Go tests with race detector
+      run: go test -v -race ./...
+
+    - name: Run Go tests with coverage
+      run: go test -v -coverprofile=coverage-go.txt ./...
 
     - name: Run Rust tests
       run: cargo test --verbose
@@ -126,13 +129,10 @@ jobs:
       with:
         components: rustfmt, clippy
 
-    - name: Install golangci-lint
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.12.2
-        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-
     - name: Run golangci-lint
-      run: golangci-lint run --timeout=5m
+      run: |
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        golangci-lint run --timeout=5m
 
     - name: Rust clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
