@@ -42,23 +42,26 @@ impl DiffResult {
 
         if !self.leftonly.is_empty() {
             println!("[+] Only in {}:", _left);
-            for name in &self.leftonly {
-                println!("    {}", name);
+            let last = self.leftonly.len() - 1;
+            for (i, name) in self.leftonly.iter().enumerate() {
+                let branch = if i == last { "└──" } else { "├──" };
+                println!("    {} {}", branch, name);
             }
             println!();
         }
 
         if !self.rightonly.is_empty() {
             println!("[-] Only in {}:", _right);
-            for name in &self.rightonly {
-                println!("    {}", name);
+            let last = self.rightonly.len() - 1;
+            for (i, name) in self.rightonly.iter().enumerate() {
+                let branch = if i == last { "└──" } else { "├──" };
+                println!("    {} {}", branch, name);
             }
             println!();
         }
 
         if !self.diffs.is_empty() {
             println!("[~] Modified resources:");
-            println!();
 
             let mut byresource: HashMap<String, Vec<&Difference>> = HashMap::new();
             for diff in &self.diffs {
@@ -70,11 +73,14 @@ impl DiffResult {
 
             for (resource, diffs) in byresource {
                 println!("  {}:", resource);
-                for diff in diffs {
+                let last = diffs.len() - 1;
+                for (i, diff) in diffs.iter().enumerate() {
+                    let branch = if i == last { "└──" } else { "├──" };
                     match &diff.kind {
                         DiffType::Modified => {
                             println!(
-                                "    {} {} -> {}",
+                                "    {} {} {} -> {}",
+                                branch,
                                 diff.path,
                                 diff.leftval.as_deref().unwrap_or("null"),
                                 diff.rightval.as_deref().unwrap_or("null")
@@ -82,14 +88,16 @@ impl DiffResult {
                         }
                         DiffType::Added => {
                             println!(
-                                "    {} added: {}",
+                                "    {} {} added: {}",
+                                branch,
                                 diff.path,
                                 diff.rightval.as_deref().unwrap_or("null")
                             );
                         }
                         DiffType::Removed => {
                             println!(
-                                "    {} removed: {}",
+                                "    {} {} removed: {}",
+                                branch,
                                 diff.path,
                                 diff.leftval.as_deref().unwrap_or("null")
                             );
