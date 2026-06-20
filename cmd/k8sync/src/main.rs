@@ -7,7 +7,7 @@ mod diff;
 #[command(version = "0.1.0")]
 #[command(about = "Kubernetes multi-cluster drift detector",
           long_about = None)]
-struct CLI {
+struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
@@ -25,10 +25,13 @@ enum Commands {
 }
 
 fn main() {
-    let _cli = CLI::parse();
+    let _cli = Cli::parse();
 
     match &_cli.command {
-        Commands::Compare { contexts, namespace} => {
+        Commands::Compare {
+            contexts,
+            namespace,
+        } => {
             println!("[+] Comparing clusters -> {}", contexts);
             println!("[+] Namespace -> {}", namespace);
             // TODO: Call Go collector

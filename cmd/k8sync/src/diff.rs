@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum DiffType {
     Added,
@@ -8,6 +9,7 @@ pub enum DiffType {
     Modified,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Difference {
     pub resource: String,
@@ -17,12 +19,14 @@ pub struct Difference {
     pub rightval: Option<String>,
 }
 
+#[allow(dead_code)]
 pub struct DiffResult {
     pub diffs: Vec<Difference>,
     pub leftonly: Vec<String>,
     pub rightonly: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl DiffResult {
     pub fn is_empty(&self) -> bool {
         self.diffs.is_empty() && self.leftonly.is_empty() && self.rightonly.is_empty()
@@ -60,7 +64,7 @@ impl DiffResult {
             for diff in &self.diffs {
                 byresource
                     .entry(diff.resource.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(diff);
             }
 
@@ -98,6 +102,7 @@ impl DiffResult {
     }
 }
 
+#[allow(dead_code)]
 pub fn compare_deployments(left: &Value, right: &Value) -> DiffResult {
     let mut result = DiffResult {
         diffs: Vec::new(),
@@ -146,6 +151,7 @@ pub fn compare_deployments(left: &Value, right: &Value) -> DiffResult {
     result
 }
 
+#[allow(dead_code)]
 fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
     let mut diffs = Vec::new();
 
