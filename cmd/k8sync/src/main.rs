@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+mod diff;
+
 #[derive(Parser)]
 #[command(name = "k8sync")]
 #[command(version = "0.1.0")]
