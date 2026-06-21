@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use serde::Deserialize;
 use std::process::Command;
 
 mod diff;
@@ -16,23 +17,52 @@ struct Cli {
 enum Commands {
     Compare {
         #[arg(short, long)]
-        contexts: String,
+        contexts: Option<String>,
 
-        #[arg(short, long, default_value = "default")]
-        namespace: String,
+        #[arg(short, long)]
+        namespace: Option<String>,
     },
     List,
 }
 
+#[derive(Deserialize, Default)]
+struct Config {
+    contexts: Option<Vec<String>>,
+    namespace: Option<String>,
+}
+
+fn load_config() -> Config {
+    let path = std::path::Path::new(".k8sync.yaml");
+    if !path.exists() {
+        return Config::default();
+    }
+    let content = std::fs::read_to_string(path).unwrap_or_default();
+    serde_yaml::from_str(&content).unwrap_or_default()
+}
+
 fn main() {
     let _cli = Cli::parse();
+    let cfg = load_config();
 
     match &_cli.command {
         Commands::Compare {
             contexts,
             namespace,
         } => {
-            let parts: Vec<&str> = contexts.splitn(2, ',').map(str::trim).collect();
+            let ctxstr = contexts
+                .clone()
+                .or_else(|| cfg.contexts.map(|v| v.join(",")))
+                .unwrap_or_else(|| {
+                    eprintln!("[!] No contexts specified. Use --contexts or set in .k8sync.yaml");
+                    std::process::exit(1);
+                });
+
+            let ns = namespace
+                .clone()
+                .or(cfg.namespace)
+                .unwrap_or_else(|| "default".to_string());
+
+            let parts: Vec<&str> = ctxstr.splitn(2, ',').map(str::trim).collect();
             if parts.len() != 2 {
                 eprintln!("[!] Provide exactly two contexts: --contexts left,right");
                 std::process::exit(1);
@@ -40,13 +70,13 @@ fn main() {
             let (leftctx, rightctx) = (parts[0], parts[1]);
 
             println!("[~] Collecting from {}", leftctx);
-            let leftjson = collect(leftctx, namespace);
+            let leftjson = collect(leftctx, &ns);
 
             println!("[~] Collecting from {}", rightctx);
-            let rightjson = collect(rightctx, namespace);
+            let rightjson = collect(rightctx, &ns);
 
-            println!("[~] Comparing deployments in namespace {}", namespace);
-            let result = diff::compare_deployments(&leftjson, &rightjson);
+            println!("[~] Comparing deployments in namespace {}", ns);
+            let result = diff::compare_resources(&leftjson, &rightjson);
             result.print(leftctx, rightctx);
         }
         Commands::List => {

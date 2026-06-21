@@ -14,6 +14,13 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
+type snapshot struct {
+	Deployments  []interface{} `json:"deployments"`
+	StatefulSets []interface{} `json:"statefulsets"`
+	Services     []interface{} `json:"services"`
+	ConfigMaps   []interface{} `json:"configmaps"`
+}
+
 func main() {
 	var (
 		ctxname   = flag.String("context", "", "Kubernetes context name")
@@ -54,15 +61,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	deploys, err := clientset.AppsV1().Deployments(*namespace).List(context.TODO(), metav1.ListOptions{})
+	snap, err := collect(clientset, *namespace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] Failed to list deployments: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[!] Failed to collect resources: %v\n", err)
 		os.Exit(1)
 	}
 
-	normalized := normalize(deploys)
-
-	output, err := json.MarshalIndent(normalized, "", "  ")
+	output, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[!] Failed to marshal JSON: %v\n", err)
 		os.Exit(1)
@@ -71,19 +76,52 @@ func main() {
 	fmt.Println(string(output))
 }
 
-func normalize(list interface{}) map[string]interface{} {
+func collect(clientset *kubernetes.Clientset, namespace string) (*snapshot, error) {
+	deploys, err := clientset.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("deployments: %w", err)
+	}
+
+	statefulsets, err := clientset.AppsV1().StatefulSets(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("statefulsets: %w", err)
+	}
+
+	services, err := clientset.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("services: %w", err)
+	}
+
+	configmaps, err := clientset.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("configmaps: %w", err)
+	}
+
+	return &snapshot{
+		Deployments:  normalizelist(deploys),
+		StatefulSets: normalizelist(statefulsets),
+		Services:     normalizelist(services),
+		ConfigMaps:   normalizelist(configmaps),
+	}, nil
+}
+
+func normalizelist(list interface{}) []interface{} {
 	raw, err := json.Marshal(list)
 	if err != nil {
 		return nil
 	}
-
 	var result map[string]interface{}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil
 	}
-
-	cleanmetadata(result)
-	return result
+	items, ok := result["items"].([]interface{})
+	if !ok {
+		return []interface{}{}
+	}
+	for _, item := range items {
+		cleanmetadata(item)
+	}
+	return items
 }
 
 func cleanmetadata(data interface{}) {

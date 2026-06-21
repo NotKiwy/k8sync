@@ -11,7 +11,15 @@ pub enum DiffType {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
+pub struct ResourceRef {
+    pub restype: String,
+    pub name: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub struct Difference {
+    pub restype: String,
     pub resource: String,
     pub path: String,
     pub kind: DiffType,
@@ -22,8 +30,18 @@ pub struct Difference {
 #[allow(dead_code)]
 pub struct DiffResult {
     pub diffs: Vec<Difference>,
-    pub leftonly: Vec<String>,
-    pub rightonly: Vec<String>,
+    pub leftonly: Vec<ResourceRef>,
+    pub rightonly: Vec<ResourceRef>,
+}
+
+fn display_restype(restype: &str) -> &str {
+    match restype {
+        "deployments" => "Deployment",
+        "statefulsets" => "StatefulSet",
+        "services" => "Service",
+        "configmaps" => "ConfigMap",
+        _ => restype,
+    }
 }
 
 #[allow(dead_code)]
@@ -43,9 +61,9 @@ impl DiffResult {
         if !self.leftonly.is_empty() {
             println!("[+] Only in {}:", _left);
             let last = self.leftonly.len() - 1;
-            for (i, name) in self.leftonly.iter().enumerate() {
+            for (i, r) in self.leftonly.iter().enumerate() {
                 let branch = if i == last { "└──" } else { "├──" };
-                println!("    {} {}", branch, name);
+                println!("    {} {}/{}", branch, display_restype(&r.restype), r.name);
             }
             println!();
         }
@@ -53,9 +71,9 @@ impl DiffResult {
         if !self.rightonly.is_empty() {
             println!("[-] Only in {}:", _right);
             let last = self.rightonly.len() - 1;
-            for (i, name) in self.rightonly.iter().enumerate() {
+            for (i, r) in self.rightonly.iter().enumerate() {
                 let branch = if i == last { "└──" } else { "├──" };
-                println!("    {} {}", branch, name);
+                println!("    {} {}/{}", branch, display_restype(&r.restype), r.name);
             }
             println!();
         }
@@ -65,10 +83,8 @@ impl DiffResult {
 
             let mut byresource: HashMap<String, Vec<&Difference>> = HashMap::new();
             for diff in &self.diffs {
-                byresource
-                    .entry(diff.resource.clone())
-                    .or_default()
-                    .push(diff);
+                let key = format!("{}/{}", display_restype(&diff.restype), diff.resource);
+                byresource.entry(key).or_default().push(diff);
             }
 
             for (resource, diffs) in byresource {
@@ -111,17 +127,24 @@ impl DiffResult {
 }
 
 #[allow(dead_code)]
-pub fn compare_deployments(left: &Value, right: &Value) -> DiffResult {
+pub fn compare_resources(left: &Value, right: &Value) -> DiffResult {
     let mut result = DiffResult {
         diffs: Vec::new(),
         leftonly: Vec::new(),
         rightonly: Vec::new(),
     };
-
     let _empty = vec![];
-    let leftitems = left["items"].as_array().unwrap_or(&_empty);
-    let rightitems = right["items"].as_array().unwrap_or(&_empty);
 
+    for restype in ["deployments", "statefulsets", "services", "configmaps"] {
+        let leftitems = left[restype].as_array().unwrap_or(&_empty);
+        let rightitems = right[restype].as_array().unwrap_or(&_empty);
+        compare_kind(restype, leftitems, rightitems, &mut result);
+    }
+
+    result
+}
+
+fn compare_kind(restype: &str, leftitems: &[Value], rightitems: &[Value], result: &mut DiffResult) {
     let mut _leftmap: HashMap<String, &Value> = HashMap::new();
     let mut _rightmap: HashMap<String, &Value> = HashMap::new();
 
@@ -130,7 +153,6 @@ pub fn compare_deployments(left: &Value, right: &Value) -> DiffResult {
             _leftmap.insert(name.to_string(), item);
         }
     }
-
     for item in rightitems {
         if let Some(name) = item["metadata"]["name"].as_str() {
             _rightmap.insert(name.to_string(), item);
@@ -139,34 +161,51 @@ pub fn compare_deployments(left: &Value, right: &Value) -> DiffResult {
 
     for name in _leftmap.keys() {
         if !_rightmap.contains_key(name) {
-            result.leftonly.push(name.clone());
+            result.leftonly.push(ResourceRef {
+                restype: restype.to_string(),
+                name: name.clone(),
+            });
         }
     }
-
     for name in _rightmap.keys() {
         if !_leftmap.contains_key(name) {
-            result.rightonly.push(name.clone());
+            result.rightonly.push(ResourceRef {
+                restype: restype.to_string(),
+                name: name.clone(),
+            });
         }
     }
 
     for (name, leftitem) in &_leftmap {
         if let Some(rightitem) = _rightmap.get(name) {
-            let fielddiffs = compare_fields(name, leftitem, rightitem);
+            let fielddiffs = compare_fields(restype, name, leftitem, rightitem);
             result.diffs.extend(fielddiffs);
         }
     }
-
-    result
 }
 
-#[allow(dead_code)]
-fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
+fn compare_fields(restype: &str, name: &str, left: &Value, right: &Value) -> Vec<Difference> {
+    match restype {
+        "deployments" | "statefulsets" => compare_workload_fields(restype, name, left, right),
+        "services" => compare_service_fields(name, left, right),
+        "configmaps" => compare_configmap_fields(name, left, right),
+        _ => Vec::new(),
+    }
+}
+
+fn compare_workload_fields(
+    restype: &str,
+    name: &str,
+    left: &Value,
+    right: &Value,
+) -> Vec<Difference> {
     let mut diffs = Vec::new();
 
     let leftreplicas = left["spec"]["replicas"].as_i64();
     let rightreplicas = right["spec"]["replicas"].as_i64();
     if leftreplicas != rightreplicas {
         diffs.push(Difference {
+            restype: restype.to_string(),
             resource: name.to_string(),
             path: "spec.replicas".to_string(),
             kind: DiffType::Modified,
@@ -184,6 +223,7 @@ fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
             let rightimg = rc["image"].as_str();
             if leftimg != rightimg {
                 diffs.push(Difference {
+                    restype: restype.to_string(),
                     resource: name.to_string(),
                     path: format!("spec.template.spec.containers[{}].image", i),
                     kind: DiffType::Modified,
@@ -194,6 +234,124 @@ fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
         }
     }
 
+    compare_labels(restype, name, left, right, &mut diffs);
+    diffs
+}
+
+fn compare_service_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
+    let mut diffs = Vec::new();
+
+    let lefttype = left["spec"]["type"].as_str();
+    let righttype = right["spec"]["type"].as_str();
+    if lefttype != righttype {
+        diffs.push(Difference {
+            restype: "services".to_string(),
+            resource: name.to_string(),
+            path: "spec.type".to_string(),
+            kind: DiffType::Modified,
+            leftval: lefttype.map(String::from),
+            rightval: righttype.map(String::from),
+        });
+    }
+
+    if let (Some(_leftports), Some(_rightports)) = (
+        left["spec"]["ports"].as_array(),
+        right["spec"]["ports"].as_array(),
+    ) {
+        for (i, (lp, rp)) in _leftports.iter().zip(_rightports.iter()).enumerate() {
+            let leftport = lp["port"].as_i64();
+            let rightport = rp["port"].as_i64();
+            if leftport != rightport {
+                diffs.push(Difference {
+                    restype: "services".to_string(),
+                    resource: name.to_string(),
+                    path: format!("spec.ports[{}].port", i),
+                    kind: DiffType::Modified,
+                    leftval: leftport.map(|v| v.to_string()),
+                    rightval: rightport.map(|v| v.to_string()),
+                });
+            }
+            let lefttarget = lp["targetPort"]
+                .as_i64()
+                .map(|v| v.to_string())
+                .or_else(|| lp["targetPort"].as_str().map(String::from));
+            let righttarget = rp["targetPort"]
+                .as_i64()
+                .map(|v| v.to_string())
+                .or_else(|| rp["targetPort"].as_str().map(String::from));
+            if lefttarget != righttarget {
+                diffs.push(Difference {
+                    restype: "services".to_string(),
+                    resource: name.to_string(),
+                    path: format!("spec.ports[{}].targetPort", i),
+                    kind: DiffType::Modified,
+                    leftval: lefttarget,
+                    rightval: righttarget,
+                });
+            }
+        }
+    }
+
+    compare_labels("services", name, left, right, &mut diffs);
+    diffs
+}
+
+fn compare_configmap_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
+    let mut diffs = Vec::new();
+
+    if let (Some(_leftdata), Some(_rightdata)) =
+        (left["data"].as_object(), right["data"].as_object())
+    {
+        for (key, leftval) in _leftdata {
+            match _rightdata.get(key) {
+                Some(rightval) if rightval != leftval => {
+                    diffs.push(Difference {
+                        restype: "configmaps".to_string(),
+                        resource: name.to_string(),
+                        path: format!("data.{}", key),
+                        kind: DiffType::Modified,
+                        leftval: leftval.as_str().map(String::from),
+                        rightval: rightval.as_str().map(String::from),
+                    });
+                }
+                None => {
+                    diffs.push(Difference {
+                        restype: "configmaps".to_string(),
+                        resource: name.to_string(),
+                        path: format!("data.{}", key),
+                        kind: DiffType::Removed,
+                        leftval: leftval.as_str().map(String::from),
+                        rightval: None,
+                    });
+                }
+                _ => {}
+            }
+        }
+        for key in _rightdata.keys() {
+            if !_leftdata.contains_key(key) {
+                diffs.push(Difference {
+                    restype: "configmaps".to_string(),
+                    resource: name.to_string(),
+                    path: format!("data.{}", key),
+                    kind: DiffType::Added,
+                    leftval: None,
+                    rightval: _rightdata[key].as_str().map(String::from),
+                });
+            }
+        }
+    }
+
+    compare_labels("configmaps", name, left, right, &mut diffs);
+    diffs
+}
+
+fn compare_labels(
+    restype: &str,
+    name: &str,
+    left: &Value,
+    right: &Value,
+    diffs: &mut Vec<Difference>,
+) {
     if let (Some(_leftlabels), Some(_rightlabels)) = (
         left["metadata"]["labels"].as_object(),
         right["metadata"]["labels"].as_object(),
@@ -202,6 +360,7 @@ fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
             match _rightlabels.get(key) {
                 Some(rightval) if rightval != leftval => {
                     diffs.push(Difference {
+                        restype: restype.to_string(),
                         resource: name.to_string(),
                         path: format!("metadata.labels.{}", key),
                         kind: DiffType::Modified,
@@ -211,6 +370,7 @@ fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
                 }
                 None => {
                     diffs.push(Difference {
+                        restype: restype.to_string(),
                         resource: name.to_string(),
                         path: format!("metadata.labels.{}", key),
                         kind: DiffType::Removed,
@@ -221,10 +381,10 @@ fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
                 _ => {}
             }
         }
-
         for key in _rightlabels.keys() {
             if !_leftlabels.contains_key(key) {
                 diffs.push(Difference {
+                    restype: restype.to_string(),
                     resource: name.to_string(),
                     path: format!("metadata.labels.{}", key),
                     kind: DiffType::Added,
@@ -234,8 +394,6 @@ fn compare_fields(name: &str, left: &Value, right: &Value) -> Vec<Difference> {
             }
         }
     }
-
-    diffs
 }
 
 #[cfg(test)]
@@ -243,53 +401,49 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn mksnap(deployments: serde_json::Value) -> serde_json::Value {
+        json!({
+            "deployments": deployments,
+            "statefulsets": [],
+            "services": [],
+            "configmaps": []
+        })
+    }
+
     #[test]
     fn test_no_differences() {
-        let data = json!({
-            "items": [{
-                "metadata": {"name": "test"},
-                "spec": {"replicas": 3}
-            }]
-        });
-
-        let result = compare_deployments(&data, &data);
+        let data = mksnap(json!([{
+            "metadata": {"name": "test"},
+            "spec": {"replicas": 3}
+        }]));
+        let result = compare_resources(&data, &data);
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_replica_difference() {
-        let left = json!({
-            "items": [{
-                "metadata": {"name": "test"},
-                "spec": {"replicas": 2}
-            }]
-        });
-
-        let right = json!({
-            "items": [{
-                "metadata": {"name": "test"},
-                "spec": {"replicas": 5}
-            }]
-        });
-
-        let result = compare_deployments(&left, &right);
+        let left = mksnap(json!([{
+            "metadata": {"name": "test"},
+            "spec": {"replicas": 2}
+        }]));
+        let right = mksnap(json!([{
+            "metadata": {"name": "test"},
+            "spec": {"replicas": 5}
+        }]));
+        let result = compare_resources(&left, &right);
         assert_eq!(result.diffs.len(), 1);
         assert_eq!(result.diffs[0].path, "spec.replicas");
     }
 
     #[test]
     fn test_resource_only_in_left() {
-        let left = json!({
-            "items": [{
-                "metadata": {"name": "test"},
-                "spec": {"replicas": 2}
-            }]
-        });
-
-        let right = json!({"items": []});
-
-        let result = compare_deployments(&left, &right);
+        let left = mksnap(json!([{
+            "metadata": {"name": "test"},
+            "spec": {"replicas": 2}
+        }]));
+        let right = mksnap(json!([]));
+        let result = compare_resources(&left, &right);
         assert_eq!(result.leftonly.len(), 1);
-        assert_eq!(result.leftonly[0], "test");
+        assert_eq!(result.leftonly[0].name, "test");
     }
 }
