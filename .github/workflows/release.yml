@@ -45,7 +45,7 @@ jobs:
           7z a k8sync-windows-amd64.zip dist/collector.exe dist/k8sync.exe
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: k8sync-*
           generate_release_notes: true
