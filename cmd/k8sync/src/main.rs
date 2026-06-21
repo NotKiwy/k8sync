@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::process::Command;
 
-mod diff;
+use k8sync::diff;
 
 #[derive(Parser)]
 #[command(name = "k8sync")]

@@ -1,0 +1,31 @@
+go:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'cmd/collector/**'
+      - 'go.mod'
+      - 'go.sum'
+
+rust:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'cmd/k8sync/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+      - 'Makefile'
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.md'
+      - 'docs/**'
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*_test.go'
+      - '**/tests/**'

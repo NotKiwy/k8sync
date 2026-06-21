@@ -82,11 +82,56 @@ func TestCleanmetadataArray(t *testing.T) {
 	cleanmetadata(data)
 
 	items := data["items"].([]interface{})
-	for _, item := range items {
+	for i, item := range items {
 		m := item.(map[string]interface{})
 		if _, ok := m["uid"]; ok {
-			t.Error("uid should be removed from array items")
+			t.Errorf("uid should be removed from array item %d", i)
 		}
+	}
+}
+
+func TestCleanmetadataPreservesData(t *testing.T) {
+	data := map[string]interface{}{
+		"data": map[string]interface{}{
+			"config.yaml": "key: value",
+			"LOG_LEVEL":   "debug",
+		},
+		"spec": map[string]interface{}{
+			"replicas": 5,
+		},
+	}
+
+	cleanmetadata(data)
+
+	d := data["data"].(map[string]interface{})
+	if d["config.yaml"] != "key: value" {
+		t.Error("data.config.yaml should be preserved")
+	}
+	if d["LOG_LEVEL"] != "debug" {
+		t.Error("data.LOG_LEVEL should be preserved")
+	}
+	if data["spec"].(map[string]interface{})["replicas"] != 5 {
+		t.Error("spec.replicas should be preserved")
+	}
+}
+
+func TestCleanmetadataAllSeven(t *testing.T) {
+	_fields := []string{"resourceVersion", "creationTimestamp", "uid", "selfLink", "managedFields", "status", "generation"}
+	data := map[string]interface{}{}
+	for _, f := range _fields {
+		data[f] = "value"
+	}
+	data["name"] = "keep"
+
+	cleanmetadata(data)
+
+	for _, f := range _fields {
+		if _, ok := data[f]; ok {
+			t.Errorf("%q should be removed", f)
+		}
+	}
+	if data["name"] != "keep" {
+		t.Error("name should be preserved")
 	}
 }
 
@@ -153,5 +198,73 @@ func TestNormalizelistEmpty(t *testing.T) {
 	result := normalizelist(fakelist{Items: []interface{}{}})
 	if len(result) != 0 {
 		t.Errorf("expected 0 items, got %d", len(result))
+	}
+}
+
+func TestNormalizelistMultipleItemsAllCleaned(t *testing.T) {
+	type fakeitem struct {
+		Metadata map[string]interface{} `json:"metadata"`
+	}
+	type fakelist struct {
+		Items []fakeitem `json:"items"`
+	}
+
+	list := fakelist{
+		Items: []fakeitem{
+			{Metadata: map[string]interface{}{"name": "a", "uid": "1", "resourceVersion": "100"}},
+			{Metadata: map[string]interface{}{"name": "b", "uid": "2", "resourceVersion": "200"}},
+			{Metadata: map[string]interface{}{"name": "c", "uid": "3", "resourceVersion": "300"}},
+		},
+	}
+
+	result := normalizelist(list)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(result))
+	}
+
+	for i, r := range result {
+		meta := r.(map[string]interface{})["metadata"].(map[string]interface{})
+		if _, ok := meta["uid"]; ok {
+			t.Errorf("item %d: uid should be removed", i)
+		}
+		if _, ok := meta["resourceVersion"]; ok {
+			t.Errorf("item %d: resourceVersion should be removed", i)
+		}
+	}
+}
+
+func TestCleanmetadataTableDriven(t *testing.T) {
+	tests := []struct {
+		name      string
+		field     string
+		preserved bool
+	}{
+		{"uid removed", "uid", false},
+		{"resourceVersion removed", "resourceVersion", false},
+		{"creationTimestamp removed", "creationTimestamp", false},
+		{"selfLink removed", "selfLink", false},
+		{"managedFields removed", "managedFields", false},
+		{"status removed", "status", false},
+		{"generation removed", "generation", false},
+		{"name preserved", "name", true},
+		{"spec preserved", "spec", true},
+		{"data preserved", "data", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := map[string]interface{}{
+				tt.field: "value",
+			}
+			cleanmetadata(data)
+			_, exists := data[tt.field]
+			if exists != tt.preserved {
+				if tt.preserved {
+					t.Errorf("field %q should be preserved but was removed", tt.field)
+				} else {
+					t.Errorf("field %q should be removed but was preserved", tt.field)
+				}
+			}
+		})
 	}
 }

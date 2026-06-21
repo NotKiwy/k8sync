@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Release ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          PLATFORM=$(go env GOOS)-$(go env GOARCH)
+          go build -o dist/collector cmd/collector/main.go
+          cargo build --release
+          cp target/release/k8sync dist/k8sync
+          tar -czf k8sync-${PLATFORM}.tar.gz -C dist collector k8sync
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          go build -o dist/collector.exe cmd/collector/main.go
+          cargo build --release
+          cp target/release/k8sync.exe dist/k8sync.exe
+          7z a k8sync-windows-amd64.zip dist/collector.exe dist/k8sync.exe
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: k8sync-*
+          generate_release_notes: true
