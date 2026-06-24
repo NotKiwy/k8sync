@@ -1,0 +1,6 @@
+target/
+bin/
+.git/
+.idea/
+*.md
+.github/

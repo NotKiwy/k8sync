@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DiffType {
     Added,
     Removed,
@@ -10,14 +11,14 @@ pub enum DiffType {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceRef {
     pub restype: String,
     pub name: String,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Difference {
     pub restype: String,
     pub resource: String,
@@ -28,10 +29,22 @@ pub struct Difference {
 }
 
 #[allow(dead_code)]
+#[derive(Serialize, Deserialize)]
 pub struct DiffResult {
     pub diffs: Vec<Difference>,
     pub leftonly: Vec<ResourceRef>,
     pub rightonly: Vec<ResourceRef>,
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    let first_line = s.lines().next().unwrap_or(s);
+    if first_line.len() > max {
+        format!("{}...", &first_line[..max])
+    } else if first_line.len() < s.len() {
+        format!("{}...", first_line)
+    } else {
+        first_line.to_string()
+    }
 }
 
 fn display_restype(restype: &str) -> &str {
@@ -48,6 +61,17 @@ fn display_restype(restype: &str) -> &str {
 impl DiffResult {
     pub fn is_empty(&self) -> bool {
         self.diffs.is_empty() && self.leftonly.is_empty() && self.rightonly.is_empty()
+    }
+
+    pub fn print_json(&self, left: &str, right: &str) {
+        let out = serde_json::json!({
+            "left": left,
+            "right": right,
+            "diffs": self.diffs,
+            "leftonly": self.leftonly,
+            "rightonly": self.rightonly,
+        });
+        println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
     }
 
     pub fn print(&self, _left: &str, _right: &str) {
@@ -98,8 +122,8 @@ impl DiffResult {
                                 "    {} {} {} -> {}",
                                 branch,
                                 diff.path,
-                                diff.leftval.as_deref().unwrap_or("null"),
-                                diff.rightval.as_deref().unwrap_or("null")
+                                truncate(diff.leftval.as_deref().unwrap_or("null"), 60),
+                                truncate(diff.rightval.as_deref().unwrap_or("null"), 60)
                             );
                         }
                         DiffType::Added => {
@@ -107,7 +131,7 @@ impl DiffResult {
                                 "    {} {} added: {}",
                                 branch,
                                 diff.path,
-                                diff.rightval.as_deref().unwrap_or("null")
+                                truncate(diff.rightval.as_deref().unwrap_or("null"), 60)
                             );
                         }
                         DiffType::Removed => {
@@ -115,7 +139,7 @@ impl DiffResult {
                                 "    {} {} removed: {}",
                                 branch,
                                 diff.path,
-                                diff.leftval.as_deref().unwrap_or("null")
+                                truncate(diff.leftval.as_deref().unwrap_or("null"), 60)
                             );
                         }
                     }
@@ -123,6 +147,20 @@ impl DiffResult {
                 println!();
             }
         }
+
+        let modified_resources = {
+            let mut keys = std::collections::HashSet::new();
+            for d in &self.diffs {
+                keys.insert(format!("{}/{}", d.restype, d.resource));
+            }
+            keys.len()
+        };
+        println!(
+            "[=] {} modified, {} only-left, {} only-right",
+            modified_resources,
+            self.leftonly.len(),
+            self.rightonly.len()
+        );
     }
 }
 

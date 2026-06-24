@@ -1,4 +1,4 @@
-.PHONY: build buildgo buildrust test clean install help
+.PHONY: build buildgo buildrust test clean install docker help
 
 build: buildgo buildrust
 	@echo "[+] Build complete"
@@ -66,6 +66,11 @@ install: build
 	@cp bin/collector /usr/local/bin/k8sync-collector
 	@echo "[+] Installed to /usr/local/bin/"
 
+docker:
+	@echo "[~] Building Docker image"
+	@docker build -t k8sync-collector .
+	@echo "[+] Image built: k8sync-collector"
+
 help:
 	@echo "k8sync - Kubernetes multi-cluster drift detector"
 	@echo ""
@@ -78,4 +83,5 @@ help:
 	@echo "  make lint       - Lint and format code"
 	@echo "  make clean      - Remove build artifacts"
 	@echo "  make install    - Install to /usr/local/bin"
+	@echo "  make docker     - Build Docker image for collector"
 	@echo "  make help       - Show this help"

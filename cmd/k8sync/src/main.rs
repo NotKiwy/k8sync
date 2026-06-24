@@ -21,8 +21,12 @@ enum Commands {
 
         #[arg(short, long)]
         namespace: Option<String>,
+
+        #[arg(short, long, default_value = "text", value_parser = ["text", "json"])]
+        output: String,
     },
     List,
+    Version,
 }
 
 #[derive(Deserialize, Default)]
@@ -48,6 +52,7 @@ fn main() {
         Commands::Compare {
             contexts,
             namespace,
+            output,
         } => {
             let ctxstr = contexts
                 .clone()
@@ -69,15 +74,22 @@ fn main() {
             }
             let (leftctx, rightctx) = (parts[0], parts[1]);
 
-            println!("[~] Collecting from {}", leftctx);
+            eprintln!("[~] Collecting from {}", leftctx);
             let leftjson = collect(leftctx, &ns);
 
-            println!("[~] Collecting from {}", rightctx);
+            eprintln!("[~] Collecting from {}", rightctx);
             let rightjson = collect(rightctx, &ns);
 
-            println!("[~] Comparing deployments in namespace {}", ns);
+            eprintln!("[~] Comparing deployments in namespace {}", ns);
             let result = diff::compare_resources(&leftjson, &rightjson);
-            result.print(leftctx, rightctx);
+            if output == "json" {
+                result.print_json(leftctx, rightctx);
+            } else {
+                result.print(leftctx, rightctx);
+            }
+        }
+        Commands::Version => {
+            println!("k8sync {}", env!("CARGO_PKG_VERSION"));
         }
         Commands::List => {
             let output = Command::new("kubectl")

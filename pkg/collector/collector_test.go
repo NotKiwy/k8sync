@@ -1,10 +1,10 @@
-package main
+package collector
 
 import (
 	"testing"
 )
 
-func TestCleanmetadataRemovesFields(t *testing.T) {
+func TestCleanMetadataRemovesFields(t *testing.T) {
 	data := map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"name":              "test",
@@ -23,7 +23,7 @@ func TestCleanmetadataRemovesFields(t *testing.T) {
 		},
 	}
 
-	cleanmetadata(data)
+	CleanMetadata(data)
 
 	meta := data["metadata"].(map[string]interface{})
 	for _, field := range []string{"uid", "resourceVersion", "creationTimestamp", "selfLink", "managedFields", "generation"} {
@@ -42,7 +42,7 @@ func TestCleanmetadataRemovesFields(t *testing.T) {
 	}
 }
 
-func TestCleanmetadataRecursive(t *testing.T) {
+func TestCleanMetadataRecursive(t *testing.T) {
 	data := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"template": map[string]interface{}{
@@ -54,7 +54,7 @@ func TestCleanmetadataRecursive(t *testing.T) {
 		},
 	}
 
-	cleanmetadata(data)
+	CleanMetadata(data)
 
 	inner := data["spec"].(map[string]interface{})["template"].(map[string]interface{})["metadata"].(map[string]interface{})
 	if _, ok := inner["uid"]; ok {
@@ -65,7 +65,7 @@ func TestCleanmetadataRecursive(t *testing.T) {
 	}
 }
 
-func TestCleanmetadataArray(t *testing.T) {
+func TestCleanMetadataArray(t *testing.T) {
 	data := map[string]interface{}{
 		"items": []interface{}{
 			map[string]interface{}{
@@ -79,7 +79,7 @@ func TestCleanmetadataArray(t *testing.T) {
 		},
 	}
 
-	cleanmetadata(data)
+	CleanMetadata(data)
 
 	items := data["items"].([]interface{})
 	for i, item := range items {
@@ -90,7 +90,7 @@ func TestCleanmetadataArray(t *testing.T) {
 	}
 }
 
-func TestCleanmetadataPreservesData(t *testing.T) {
+func TestCleanMetadataPreservesData(t *testing.T) {
 	data := map[string]interface{}{
 		"data": map[string]interface{}{
 			"config.yaml": "key: value",
@@ -101,7 +101,7 @@ func TestCleanmetadataPreservesData(t *testing.T) {
 		},
 	}
 
-	cleanmetadata(data)
+	CleanMetadata(data)
 
 	d := data["data"].(map[string]interface{})
 	if d["config.yaml"] != "key: value" {
@@ -115,7 +115,7 @@ func TestCleanmetadataPreservesData(t *testing.T) {
 	}
 }
 
-func TestCleanmetadataAllSeven(t *testing.T) {
+func TestCleanMetadataAllSeven(t *testing.T) {
 	_fields := []string{"resourceVersion", "creationTimestamp", "uid", "selfLink", "managedFields", "status", "generation"}
 	data := map[string]interface{}{}
 	for _, f := range _fields {
@@ -123,7 +123,7 @@ func TestCleanmetadataAllSeven(t *testing.T) {
 	}
 	data["name"] = "keep"
 
-	cleanmetadata(data)
+	CleanMetadata(data)
 
 	for _, f := range _fields {
 		if _, ok := data[f]; ok {
@@ -135,7 +135,7 @@ func TestCleanmetadataAllSeven(t *testing.T) {
 	}
 }
 
-func TestNormalizelistExtractsItems(t *testing.T) {
+func TestNormalizeListExtractsItems(t *testing.T) {
 	type fakeitem struct {
 		Metadata map[string]interface{} `json:"metadata"`
 		Spec     map[string]interface{} `json:"spec"`
@@ -157,14 +157,14 @@ func TestNormalizelistExtractsItems(t *testing.T) {
 		},
 	}
 
-	result := normalizelist(list)
+	result := NormalizeList(list)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(result))
 	}
 }
 
-func TestNormalizelistCleansMetadata(t *testing.T) {
+func TestNormalizeListCleansMetadata(t *testing.T) {
 	type fakeitem struct {
 		Metadata map[string]interface{} `json:"metadata"`
 	}
@@ -178,7 +178,7 @@ func TestNormalizelistCleansMetadata(t *testing.T) {
 		},
 	}
 
-	result := normalizelist(list)
+	result := NormalizeList(list)
 
 	item := result[0].(map[string]interface{})
 	meta := item["metadata"].(map[string]interface{})
@@ -190,18 +190,18 @@ func TestNormalizelistCleansMetadata(t *testing.T) {
 	}
 }
 
-func TestNormalizelistEmpty(t *testing.T) {
+func TestNormalizeListEmpty(t *testing.T) {
 	type fakelist struct {
 		Items []interface{} `json:"items"`
 	}
 
-	result := normalizelist(fakelist{Items: []interface{}{}})
+	result := NormalizeList(fakelist{Items: []interface{}{}})
 	if len(result) != 0 {
 		t.Errorf("expected 0 items, got %d", len(result))
 	}
 }
 
-func TestNormalizelistMultipleItemsAllCleaned(t *testing.T) {
+func TestNormalizeListMultipleItemsAllCleaned(t *testing.T) {
 	type fakeitem struct {
 		Metadata map[string]interface{} `json:"metadata"`
 	}
@@ -217,7 +217,7 @@ func TestNormalizelistMultipleItemsAllCleaned(t *testing.T) {
 		},
 	}
 
-	result := normalizelist(list)
+	result := NormalizeList(list)
 	if len(result) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(result))
 	}
@@ -233,7 +233,7 @@ func TestNormalizelistMultipleItemsAllCleaned(t *testing.T) {
 	}
 }
 
-func TestCleanmetadataTableDriven(t *testing.T) {
+func TestCleanMetadataTableDriven(t *testing.T) {
 	tests := []struct {
 		name      string
 		field     string
@@ -256,7 +256,7 @@ func TestCleanmetadataTableDriven(t *testing.T) {
 			data := map[string]interface{}{
 				tt.field: "value",
 			}
-			cleanmetadata(data)
+			CleanMetadata(data)
 			_, exists := data[tt.field]
 			if exists != tt.preserved {
 				if tt.preserved {

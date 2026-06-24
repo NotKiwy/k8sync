@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8sync-collector
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8sync-collector
+subjects:
+  - kind: ServiceAccount
+    name: k8sync-collector
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: k8sync-collector
+  apiGroup: rbac.authorization.k8s.io

@@ -1,25 +1,18 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/NotKiwy/k8sync/pkg/collector"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
-
-type snapshot struct {
-	Deployments  []interface{} `json:"deployments"`
-	StatefulSets []interface{} `json:"statefulsets"`
-	Services     []interface{} `json:"services"`
-	ConfigMaps   []interface{} `json:"configmaps"`
-}
 
 func main() {
 	var (
@@ -29,27 +22,7 @@ func main() {
 	)
 	flag.Parse()
 
-	var _kubeconfig string
-	if *kubeconf != "" {
-		_kubeconfig = *kubeconf
-	} else if home := homedir.HomeDir(); home != "" {
-		_kubeconfig = filepath.Join(home, ".kube", "config")
-	} else {
-		fmt.Fprintln(os.Stderr, "[!] Cannot find kubeconfig")
-		os.Exit(1)
-	}
-
-	loadrules := clientcmd.NewDefaultClientConfigLoadingRules()
-	loadrules.ExplicitPath = _kubeconfig
-
-	overrides := &clientcmd.ConfigOverrides{}
-	if *ctxname != "" {
-		overrides.CurrentContext = *ctxname
-	}
-
-	cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadrules, overrides)
-
-	config, err := cfg.ClientConfig()
+	config, err := buildConfig(*kubeconf, *ctxname)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[!] Failed to load config: %v\n", err)
 		os.Exit(1)
@@ -61,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	snap, err := collect(clientset, *namespace)
+	snap, err := collector.Collect(clientset, *namespace)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[!] Failed to collect resources: %v\n", err)
 		os.Exit(1)
@@ -76,70 +49,33 @@ func main() {
 	fmt.Println(string(output))
 }
 
-func collect(clientset *kubernetes.Clientset, namespace string) (*snapshot, error) {
-	deploys, err := clientset.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("deployments: %w", err)
+func buildConfig(kubeconf, ctxname string) (*rest.Config, error) {
+	// explicit kubeconfig path takes priority
+	if kubeconf != "" {
+		return buildKubeconfigConfig(kubeconf, ctxname)
 	}
 
-	statefulsets, err := clientset.AppsV1().StatefulSets(namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("statefulsets: %w", err)
+	// try in-cluster config when running inside a pod
+	if cfg, err := rest.InClusterConfig(); err == nil {
+		return cfg, nil
 	}
 
-	services, err := clientset.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("services: %w", err)
+	// fall back to ~/.kube/config
+	if home := homedir.HomeDir(); home != "" {
+		return buildKubeconfigConfig(filepath.Join(home, ".kube", "config"), ctxname)
 	}
 
-	configmaps, err := clientset.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("configmaps: %w", err)
-	}
-
-	return &snapshot{
-		Deployments:  normalizelist(deploys),
-		StatefulSets: normalizelist(statefulsets),
-		Services:     normalizelist(services),
-		ConfigMaps:   normalizelist(configmaps),
-	}, nil
+	return nil, fmt.Errorf("no kubeconfig found and not running in-cluster")
 }
 
-func normalizelist(list interface{}) []interface{} {
-	raw, err := json.Marshal(list)
-	if err != nil {
-		return nil
-	}
-	var result map[string]interface{}
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil
-	}
-	items, ok := result["items"].([]interface{})
-	if !ok {
-		return []interface{}{}
-	}
-	for _, item := range items {
-		cleanmetadata(item)
-	}
-	return items
-}
+func buildKubeconfigConfig(path, ctxname string) (*rest.Config, error) {
+	loadrules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadrules.ExplicitPath = path
 
-func cleanmetadata(data interface{}) {
-	switch v := data.(type) {
-	case map[string]interface{}:
-		delete(v, "resourceVersion")
-		delete(v, "creationTimestamp")
-		delete(v, "uid")
-		delete(v, "selfLink")
-		delete(v, "managedFields")
-		delete(v, "status")
-		delete(v, "generation")
-		for _, val := range v {
-			cleanmetadata(val)
-		}
-	case []interface{}:
-		for _, item := range v {
-			cleanmetadata(item)
-		}
+	overrides := &clientcmd.ConfigOverrides{}
+	if ctxname != "" {
+		overrides.CurrentContext = ctxname
 	}
+
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadrules, overrides).ClientConfig()
 }

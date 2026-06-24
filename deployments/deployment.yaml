@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8sync-collector
+  namespace: default
+  labels:
+    app: k8sync-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8sync-collector
+  template:
+    metadata:
+      labels:
+        app: k8sync-collector
+    spec:
+      serviceAccountName: k8sync-collector
+      containers:
+        - name: collector
+          image: k8sync-collector:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - -namespace
+            - default
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
