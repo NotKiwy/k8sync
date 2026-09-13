@@ -22,7 +22,7 @@ jobs:
         go-version: '1.26'
         cache: true
 
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - uses: actions-rust-lang/setup-rust-toolchain@v2
       with:
         toolchain: stable
         components: rustfmt, clippy
@@ -127,7 +127,7 @@ jobs:
       with:
         go-version: '1.26'
 
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - uses: actions-rust-lang/setup-rust-toolchain@v2
 
     - name: Build (Unix)
       if: runner.os != 'Windows'
@@ -163,7 +163,7 @@ jobs:
       with:
         go-version: '1.26'
 
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - uses: actions-rust-lang/setup-rust-toolchain@v2
       with:
         components: rustfmt, clippy
 
